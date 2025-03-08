@@ -5,19 +5,51 @@ use std::process::{Command, exit};
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
-fn get_public_ip() -> Result<String, io::Error> {
-    let curl = Command::new("curl")
-        .arg("https://api.ipify.org")
-        .output()?;
+fn execute(command: &mut Command) -> Result<String, io::Error> {
+    let output = command.output()?;
 
-    if curl.stdout.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::Other, format!("Curl command failed: {}", String::from_utf8_lossy(&curl.stderr))));
+    if !output.status.success() {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!(
+                "Command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        ));
     }
 
-    match String::from_utf8(curl.stdout) {
-        Ok(ip) => Ok(ip),
+   match String::from_utf8(output.stdout) {
+        Ok(result) => Ok(result),
         Err(_) => Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8 response")),
     }
+}
+
+fn get_public_ip() -> Result<String, io::Error> {
+    execute(Command::new("curl").arg("https://api.ipify.org"))
+}
+
+fn update_cloudflare(secrets: &Secret, configs: &[CloudflareConfig]) -> Result<String, io::Error> {
+    let mut data = "{ posts: [".to_string();
+
+    let serialized_posts: Vec<String> = configs
+        .iter()
+        .map(|config| serde_json::to_string(config).expect("Failed to serialize"))
+        .collect();
+
+    data.push_str(&serialized_posts.join(", "));
+    
+    data.push_str("]}");
+   
+    println!("https://api.cloudflare.com/client/v4/zones/{}/dns_records/batch", secrets.cloudflare_zone_id);
+    execute(Command::new("curl")
+       .arg(format!("https://api.cloudflare.com/client/v4/zones/{}/dns_records/batch", secrets.cloudflare_zone_id))
+       .arg("-X PATCH")
+       .arg("-H 'Content-Type: application/json'")
+       .arg(format!("-H 'X-Auth-Email: {}'", secrets.cloudflare_email))
+       .arg(format!("-H 'X-Auth-Key: {}'", secrets.cloudflare_api_key))
+       .arg("-d")
+       .arg(data)
+    ) 
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -152,7 +184,7 @@ fn write_secrets(file_path: &str, secrets: &Secret) -> std::io::Result<()> {
     let file = File::create(file_path)?;
     let writer = std::io::BufWriter::new(file);
 
-    serde_json::to_writer(writer, secrets).expect("Failed to write JSON");
+    serde_json::to_writer_pretty(writer, secrets).expect("Failed to write secrets JSON");
 
     Ok(())
 }
@@ -168,6 +200,9 @@ fn main() {
         secret_path = &args[1];
         if secret_path == "default" {
             let _ = write_secrets(".secrets", &Secret::default());
+            let _ = File::create(".config");
+            println!("Created default file at ./.secrets ./.config");
+            exit(0);
         }
     }
 
@@ -194,7 +229,7 @@ fn main() {
 
     println!("Ip: {}", public_ip);
 
-    secrets.last_ip = public_ip;
+    secrets.last_ip = public_ip.to_owned();
 
     let nconfigs = match read_config(&secrets.config_path) {
         Ok(configs) => configs,
@@ -202,6 +237,24 @@ fn main() {
             eprintln!("Error reading config file: {}", e);
             exit(1);
         }
+    };
+
+    let mut cconfigs = Vec::new();
+    for nconfig in &nconfigs {
+        let cconfig = CloudflareConfig{
+            content: public_ip.to_owned(),
+            proxied: nconfig.ssl,
+            name: nconfig.domain.to_owned(),
+            ..Default::default()
+        };
+
+        cconfigs.push(cconfig);
+
+    }
+
+    match update_cloudflare(&secrets, &cconfigs) {
+        Ok(_) => println!("SUCCESS: Cloudflare updated"),
+        Err(e) => eprintln!("There was an error updating cloudflare: {}", e),
     };
 
 } 
