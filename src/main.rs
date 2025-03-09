@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read};
-use std::{env, result};
+use std::env;
 use std::process::{Command, exit};
 use serde::{Deserialize, Serialize};
 
@@ -111,12 +111,14 @@ fn get_cloudflare_zone_ids(api_key: &str, domains: &[String]) -> io::Result<Vec<
         if !domains.contains(&&zone.name) {
             return None
         }
-            
+        
+        println!("{} ({})",zone.name, zone.id);
+
         Some(zone.id.clone())
     }).collect())
 }
 
-fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::Result<APIResult>{
+fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::Result<String>{
     let zone_result: String = execute(Command::new("curl")
         //.arg("-X").arg("GET")
         .arg("-H").arg("Content-Type: application/json")
@@ -132,12 +134,14 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
 
     let mut batch_data = r#"{"patches": ["#.to_string();
     
-    batch_data.push_str(&response.result.iter().map(|zone| 
-        serde_json::to_string(&CloudflareAPI{
+    batch_data.push_str(&response.result.iter().map(|zone| { 
+        println!("{} ({})", zone.name, zone.id);
+        return serde_json::to_string(&CloudflareAPI{
             content: Some(new_ip.to_string()),
             id: zone.id.clone(),
             name: zone.name.clone(),
-        }).expect("Expect to make API batch string")
+        }).expect("Expect to make API batch string");
+    }
     ).collect::<Vec<_>>().join(","));
 
     batch_data.push_str("]}");
@@ -153,13 +157,11 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
         ))
     )?;
 
-    let response: APIResult = serde_json::from_str(&batch_result).expect("Expected DNS Records deserialisation");
-
-    if !response.success {
+    if !batch_result.contains(r#""success":true"#) {
         return Err(io::Error::new(io::ErrorKind::Other, format!("There was an error: {}", zone_result)));
     }
 
-    Ok(response)
+    Ok(batch_result)
 }
 
 fn main() {
@@ -199,17 +201,18 @@ fn main() {
     } 
 
     println!("{}", public_ip);
-        
-    let zone_ids = match get_cloudflare_zone_ids(&secrets.cloudflare_api_key, &args[3..]) {
+    
+    println!("Getting Zone Ids");
+    let zone_ids = match get_cloudflare_zone_ids(&secrets.cloudflare_api_key, &args[2..]) {
         Err(e) => {
             eprintln!("Error Querying Zones: {}", e);
             exit(1); 
         },
         Ok(ids) => ids,
     };
-   
+
+    println!("Updating Zones");
     for zone_id in zone_ids {
-        println!("{}", zone_id);
         match update_cloudflare_zone_ip(&secrets.cloudflare_api_key, &zone_id, &public_ip) {
             Ok(_) => (),
             Err(e) => eprintln!("Error Updating Zone: {}", e),
