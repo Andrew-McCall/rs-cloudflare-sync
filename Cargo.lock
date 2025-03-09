@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rs-nginx-proxy"
+name = "rs-cloudflare-sync"
 version = "0.1.0"
 dependencies = [
  "serde",
