@@ -4,7 +4,7 @@ use std::env;
 use std::process::{Command, exit};
 use serde::{Deserialize, Serialize};
 
-const FILE_HEADER : &str = "file://";
+const FILE_HEADER : &str = "file:";
 fn remove_file_header(string: &str) -> &str {
     &string[FILE_HEADER.len()..]
 }
