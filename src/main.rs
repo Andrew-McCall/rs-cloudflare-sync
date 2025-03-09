@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read};
-use std::env;
+use std::{env, result};
 use std::process::{Command, exit};
 use serde::{Deserialize, Serialize};
 
@@ -100,8 +100,12 @@ fn get_cloudflare_zone_ids(api_key: &str, domains: &[String]) -> io::Result<Vec<
         .arg("-H").arg(format!("Authorization: Bearer {}", api_key))
         .arg("https://api.cloudflare.com/client/v4/zones/")
     )?;
+    
+   let response: APIResult = serde_json::from_str(&zone_result).expect("Expected Zone IDs deserialisation");
 
-    let response: APIResult = serde_json::from_str(&zone_result).expect("Expected Zone IDs deserialisation");
+    if !response.success {
+        return Err(io::Error::new(io::ErrorKind::Other, format!("There was an error: {}", zone_result)));
+    }
 
     return Ok(response.result.iter().filter_map(|zone| {
         if !domains.contains(&&zone.name) {
@@ -112,7 +116,7 @@ fn get_cloudflare_zone_ids(api_key: &str, domains: &[String]) -> io::Result<Vec<
     }).collect())
 }
 
-fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::Result<String>{
+fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::Result<APIResult>{
     let zone_result: String = execute(Command::new("curl")
         //.arg("-X").arg("GET")
         .arg("-H").arg("Content-Type: application/json")
@@ -121,6 +125,10 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
     )?;
 
     let response: APIResult = serde_json::from_str(&zone_result).expect("Expected DNS Records deserialisation");
+
+    if !response.success {
+        return Err(io::Error::new(io::ErrorKind::Other, format!("There was an error: {}", zone_result)));
+    }
 
     let mut batch_data = r#"{"patches": ["#.to_string();
     
@@ -134,7 +142,7 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
 
     batch_data.push_str("]}");
 
-    execute(Command::new("curl")
+    let batch_result = execute(Command::new("curl")
         .arg("-X").arg("POST")
         .arg("-H").arg("Content-Type: application/json")
         .arg("-H").arg(format!("Authorization: Bearer {}", api_key))
@@ -143,7 +151,15 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records/batch",
                 zone_id
         ))
-    )
+    )?;
+
+    let response: APIResult = serde_json::from_str(&batch_result).expect("Expected DNS Records deserialisation");
+
+    if !response.success {
+        return Err(io::Error::new(io::ErrorKind::Other, format!("There was an error: {}", zone_result)));
+    }
+
+    Ok(response)
 }
 
 fn main() {
