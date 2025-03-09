@@ -293,7 +293,7 @@ fn main() {
         let mut failure = true;
         match update_cloudflare(&secrets, &mut cconfigs) {
             Ok(d) => {
-                if d.contains(r#""success": true"#) {
+                if d.contains(r#""success":true"#) {
                     failure = false;
                 }else{
                     eprintln!("There was an error updating cloudflare (CURL was sent): {}", d);
