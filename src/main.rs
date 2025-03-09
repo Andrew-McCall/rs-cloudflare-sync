@@ -307,7 +307,7 @@ fn main() {
         }
     }
 
-    //secrets.last_ip = public_ip.to_owned();
+    secrets.last_ip = public_ip.to_owned();
     secrets.last_ran_timestamp = get_epoch_ms();
 
     let _ = write_secrets(secret_path, &secrets);
