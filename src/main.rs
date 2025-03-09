@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read, BufReader, BufRead};
-use std::env;
+use std::{env, u128};
 use std::process::{Command, exit};
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
@@ -28,32 +28,73 @@ fn get_public_ip() -> Result<String, io::Error> {
     execute(Command::new("curl").arg("https://api.ipify.org"))
 }
 
-fn update_cloudflare(secrets: &Secret, configs: &[CloudflareConfig]) -> Result<String, io::Error> {
-    let mut data = "{ posts: [".to_string();
+
+#[derive(Debug, Serialize, Deserialize)]
+struct APIResult {
+    result: Vec<CloudflareConfig>,
+}
+
+fn update_cloudflare(secrets: &Secret, configs: &mut [CloudflareConfig]) -> Result<String, io::Error> {
+    let list: String = execute(Command::new("curl")
+        //.arg("-X").arg("GET")
+        .arg("-H").arg("Content-Type: application/json")
+        .arg("-H").arg(format!("Authorization: Bearer {}", secrets.cloudflare_api_key))
+        .arg(format!(
+                "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
+                secrets.cloudflare_zone_id
+        ))
+    )?;
+
+    let list: APIResult = serde_json::from_str(&list).expect("Failed to deseralise Cloudflare read");
+    let mut to_create: String = String::new();
+
+    let mut data = r#"{ "puts": [  "#.to_string();
 
     let serialized_posts: Vec<String> = configs
-        .iter()
-        .map(|config| serde_json::to_string(config).expect("Failed to serialize"))
-        .collect();
+        .iter_mut()
+        .filter_map(| config | {
+            let existing = list.result.iter().find(| lconfig | 
+                lconfig.name == config.name && lconfig.r#type == config.r#type
+            );
 
+            if existing.is_some(){
+                let existing = existing.unwrap();
+                config.id = existing.id.clone();
+                return Some(serde_json::to_string(config).expect("Expected to serialize config"))
+            }
+            else {
+                to_create.push_str(&serde_json::to_string(config).expect("Expected to serialize config"));  
+                return None;
+            }
+        })
+        .collect();
+            
     data.push_str(&serialized_posts.join(", "));
+
+    if to_create.len() > 0 {
+        data.push_str(r#"], "posts": ["#);
+        to_create = to_create.replace("}{", "},{");
+        data.push_str(&to_create);
+    }
     
     data.push_str("]}");
-   
-    println!("https://api.cloudflare.com/client/v4/zones/{}/dns_records/batch", secrets.cloudflare_zone_id);
+
     execute(Command::new("curl")
-       .arg(format!("https://api.cloudflare.com/client/v4/zones/{}/dns_records/batch", secrets.cloudflare_zone_id))
-       .arg("-X PATCH")
-       .arg("-H 'Content-Type: application/json'")
-       .arg(format!("-H 'X-Auth-Email: {}'", secrets.cloudflare_email))
-       .arg(format!("-H 'X-Auth-Key: {}'", secrets.cloudflare_api_key))
-       .arg("-d")
-       .arg(data)
-    ) 
+        .arg("-X").arg("POST")
+        .arg("-H").arg("Content-Type: application/json")
+        .arg("-H").arg(format!("Authorization: Bearer {}", secrets.cloudflare_api_key))
+        .arg("-d").arg(data)
+        .arg(format!(
+                "https://api.cloudflare.com/client/v4/zones/{}/dns_records/batch",
+                secrets.cloudflare_zone_id
+        ))
+    )
 }
+
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CloudflareConfig {
+    id: Option<String>,
     r#type: String,    // Field for the type of DNS record (e.g., "A", "CNAME", etc.)
     name: String,      // Field for the name of the DNS record (e.g., "www.example.com")
     content: String,   // Field for the ip of the DNS record
@@ -64,6 +105,7 @@ struct CloudflareConfig {
 impl Default for CloudflareConfig {
     fn default() -> Self {
         CloudflareConfig {
+            id: None,
             r#type: "A".to_string(),
             name: "www.example.com".to_string(),
             content: "x.x.x.x".to_string(),
@@ -150,7 +192,7 @@ struct Secret {
     cloudflare_zone_id: String,
     config_path: String,
     last_ip: String,
-    last_ran_timestamp: i128,
+    last_ran_timestamp: u128,
 }
 
 impl Default for Secret {
@@ -162,7 +204,7 @@ impl Default for Secret {
             cloudflare_api_key: "API_KEY".to_string(),
             cloudflare_email: "example@a.bc".to_string(),
             cloudflare_zone_id: "ZONE_ID".to_string(),
-            last_ran_timestamp: -1,
+            last_ran_timestamp: 0,
         }
     }
 }
@@ -174,9 +216,6 @@ fn read_secrets(file_path: &str) -> Result<Secret, std::io::Error> {
     
     let secrets: Secret = serde_json::from_str(&contents).expect("Failed to parse JSON");
     
-    println!("nginx_output: {}", secrets.nginx_output);
-    println!("cloudflare_api_key: {}", secrets.cloudflare_api_key);
-
     Ok(secrets)
 }
 
@@ -229,8 +268,6 @@ fn main() {
 
     println!("Ip: {}", public_ip);
 
-    secrets.last_ip = public_ip.to_owned();
-
     let nconfigs = match read_config(&secrets.config_path) {
         Ok(configs) => configs,
         Err(e) => {
@@ -252,9 +289,29 @@ fn main() {
 
     }
 
-    match update_cloudflare(&secrets, &cconfigs) {
-        Ok(_) => println!("SUCCESS: Cloudflare updated"),
-        Err(e) => eprintln!("There was an error updating cloudflare: {}", e),
-    };
+    {
+        let mut failure = true;
+        match update_cloudflare(&secrets, &mut cconfigs) {
+            Ok(d) => {
+                if d.contains(r#""success": true"#) {
+                    failure = false;
+                }else{
+                    eprintln!("There was an error updating cloudflare (CURL was sent): {}", d);
+                }
+            },
+            Err(e) => eprintln!("There was an error updating cloudflare: {}", e),
+        };
+
+        if failure {
+            exit(1);
+        }
+    }
+
+    //secrets.last_ip = public_ip.to_owned();
+    secrets.last_ran_timestamp = get_epoch_ms();
+
+    let _ = write_secrets(secret_path, &secrets);
+
+    println!("Finished");
 
 } 
