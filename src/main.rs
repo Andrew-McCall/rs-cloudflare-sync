@@ -312,6 +312,6 @@ fn main() {
 
     let _ = write_secrets(secret_path, &secrets);
 
-    println!("Finished");
+    println!("Finished, {} Updated!", cconfigs.len());
 
 } 
