@@ -170,7 +170,7 @@ fn main() {
     let args : Vec<String> = env::args().collect();
 
     if args.len() < 3 {
-        eprintln!("Missing Args. Should be API_KEY Domain1 Domain2? Domain3?...");
+        eprintln!("Missing Args. Should be <API_KEY_OR_FILE> <DOMAIN_1> [DOMAIN_N ...]");
         exit(2);
     }
     
@@ -178,7 +178,15 @@ fn main() {
     
     let mut secrets; 
     if api_details.starts_with(FILE_HEADER) {
-        secrets = match read_secrets(remove_file_header(api_details)) {
+	let file_path = remove_file_header(api_details);
+
+	if &args[2].to_uppercase() == "DEFAULT" {
+	    write_secrets(file_path, &Secret::default()).expect("Expected to write Secrets file");
+	    println!("Created Secrets file: {}", file_path);
+	    exit(0);
+	}
+
+        secrets = match read_secrets(file_path) {
             Err(e) => {
                 eprintln!("Error reading Secrets file ({}): {}", api_details, e);
                 exit(2);
