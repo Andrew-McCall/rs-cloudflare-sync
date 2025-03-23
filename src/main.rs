@@ -109,14 +109,9 @@ fn get_cloudflare_zone_ids(api_key: &str, domains: &[String]) -> io::Result<Vec<
     }
 
     return Ok(response.result.iter().filter_map(|zone| {
-        println!("Found: {} {} {}", zone.id, zone.r#type.as_ref().unwrap(), &&zone.name);
         if !domains.contains(&&zone.name) {
             return None
         }
-
-	    if zone.r#type.is_none() || zone.r#type.as_ref().unwrap() != &"A" {
-	        return None
-	    }
         
         println!("{} ({})",zone.name, zone.id);
 
@@ -140,10 +135,14 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
 
     let mut batch_data = r#"{"patches": ["#.to_string();
     
-    batch_data.push_str(&response.result.iter_mut().map(|zone| { 
+    batch_data.push_str(&response.result.iter_mut().filter_map(|zone| { 
+        if zone.r#type.is_none() || zone.r#type.as_ref().unwrap() != &"A" {
+            return None;
+        }
+
         println!("{} ({})", zone.name, zone.id);
-	zone.content = Some(new_ip.to_string());
-        return serde_json::to_string(&zone).expect("Expect to make API batch string");
+	    zone.content = Some(new_ip.to_string());
+        return Some(serde_json::to_string(&zone).expect("Expect to make API batch string"));
     }
     ).collect::<Vec<_>>().join(","));
 
