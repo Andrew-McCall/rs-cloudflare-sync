@@ -192,7 +192,9 @@ fn main() {
                 exit(2);
             }
             Ok(s) => s,
-        }
+        };
+        println!("Key: {}", &secrets.cloudflare_api_key[secrets.cloudflare_api_key.len() -4..]);
+        println!("Last Ip: {}", secrets.last_ip.clone().unwrap_or("N/A".to_string()));
     }else{
         secrets = Secret::new(api_details);
     }
@@ -221,11 +223,16 @@ fn main() {
         Ok(ids) => ids,
     };
 
+    if zone_ids.len() != &args.len()-2 {
+        eprintln!("Unable to find all domains.\n{}", zone_ids.join("\n"));
+        exit(1);
+    };
+
     println!("Updating Zones");
     for zone_id in zone_ids {
         match update_cloudflare_zone_ip(&secrets.cloudflare_api_key, &zone_id, &public_ip) {
-            Ok(_) => (),
             Err(e) => eprintln!("Error Updating Zone: {}", e),
+            Ok(_) => println!("Zone Updated (ID:{})", zone_id),
         } 
     }
 
