@@ -1,13 +1,14 @@
 Cloudflare DNS Updater
 ----------------------
-A simple Rust CLI tool that updates your Cloudflare DNS "A" records with your current public IP. It uses curl to fetch your IP and updates the DNS records via the Cloudflare API only if your IP has changed.
+A simple Rust CLI tool that updates your Cloudflare DNS 'A' records with your current public IP. It uses curl to fetch your IP and updates the DNS records via the Cloudflare API only if your IP has changed.
 
 Features
 --------
 - Tiny Build: Leverages the system's curl, keeping dependencies minimal (std + serde_json).
 - IP Caching: Retrieves your public IP from ipify and caches it locally in a JSON file.
 - Cloudflare API: Fetches zone IDs and updates DNS records in a batch.
-- DNS Filtering: Handles filtering of DNS records and zones to target only specific records.
+- Zone Filtering: Only updates zones given as domain names as arguments.
+- Record Filtering: Only updates 'A' records.
 - Secrets Management: Supports loading your Cloudflare API key from the JSON file.
 - Error Handling: Provides clear error messages and exits with non-zero codes on failures.
 
