@@ -109,13 +109,14 @@ fn get_cloudflare_zone_ids(api_key: &str, domains: &[String]) -> io::Result<Vec<
     }
 
     return Ok(response.result.iter().filter_map(|zone| {
+        println!("Found: {} {} {}", zone.id, zone.r#type.as_ref().unwrap(), &&zone.name);
         if !domains.contains(&&zone.name) {
             return None
         }
 
-	if zone.r#type.is_none() || zone.r#type.as_ref().unwrap() != &"A" {
-	    return None
-	}
+	    if zone.r#type.is_none() || zone.r#type.as_ref().unwrap() != &"A" {
+	        return None
+	    }
         
         println!("{} ({})",zone.name, zone.id);
 
@@ -194,7 +195,7 @@ fn main() {
             Ok(s) => s,
         };
         println!("Key: {}", &secrets.cloudflare_api_key[secrets.cloudflare_api_key.len() -4..]);
-        println!("Last Ip: {}", secrets.last_ip.clone().unwrap_or("N/A".to_string()));
+        println!("Last Ip: {}", &secrets.last_ip.as_ref().unwrap_or(&"N/A".to_owned()));
     }else{
         secrets = Secret::new(api_details);
     }
