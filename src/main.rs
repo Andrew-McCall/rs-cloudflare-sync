@@ -132,19 +132,29 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
     if !response.success {
         return Err(io::Error::new(io::ErrorKind::Other, format!("There was an error: {}", zone_result)));
     }
+    
+    let mut update = false;
 
     let mut batch_data = r#"{"patches": ["#.to_string();
-    
-    batch_data.push_str(&response.result.iter_mut().filter_map(|zone| { 
-        if zone.r#type.is_none() || zone.r#type.as_ref().unwrap() != &"A" {
+    batch_data.push_str(
+        &response.result.iter_mut().filter_map(|zone| { 
+        if zone.r#type.is_none() || zone.content.is_some() || zone.r#type.as_ref().unwrap() != &"A" || zone.content.as_ref().unwrap() == new_ip {
             return None;
         }
-
+        
         println!("{} ({})", zone.name, zone.id);
-	    zone.content = Some(new_ip.to_string());
+	    
+        zone.content = Some(new_ip.to_string());
+        update = true;
+        
         return Some(serde_json::to_string(&zone).expect("Expect to make API batch string"));
     }
     ).collect::<Vec<_>>().join(","));
+    
+    if !update {
+        println!("No records to update");
+        return Ok("0".to_string());
+    }
 
     batch_data.push_str("]}");
 
