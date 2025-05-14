@@ -139,14 +139,12 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
     let mut batch_data = r#"{"patches": ["#.to_string();
     batch_data.push_str(
         &response.result.iter_mut().filter_map(|zone| { 
-    
-        println!("DEBUG: {:?}", zone);
 
-        if zone.r#type.is_none() || zone.content.is_some(){
+        if zone.r#type.is_none() || zone.content.is_none() { 
             return None;
         }
 
-        if zone.r#type.as_ref().unwrap() != &"A" || zone.content.as_ref().unwrap() == new_ip || zone.comment.as_ref().unwrap_or(&"".to_string()).len() > 0 {
+        if zone.r#type.as_ref().unwrap() != &"A" || zone.content.as_ref().unwrap() == new_ip || zone.comment.is_some() {
             println!("Skipping {}", zone.name);
             return None;
         }
