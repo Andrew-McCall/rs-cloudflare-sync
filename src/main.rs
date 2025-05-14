@@ -145,7 +145,7 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
         }
 
         if zone.r#type.as_ref().unwrap() != &"A" || zone.content.as_ref().unwrap() == new_ip || zone.comment.is_some() {
-            println!("Skipping {}", zone.name);
+            println!("{} ({}) - Skipping", zone.name, zone.id);
             return None;
         }
         
@@ -159,7 +159,7 @@ fn update_cloudflare_zone_ip(api_key: &str, zone_id: &str, new_ip: &str) -> io::
     ).collect::<Vec<_>>().join(","));
     
     if !update {
-        println!("No records to update");
+        // println!("No records to update");
         return Ok("0".to_string());
     }
 
@@ -249,7 +249,10 @@ fn main() {
     for zone_id in zone_ids {
         match update_cloudflare_zone_ip(&secrets.cloudflare_api_key, &zone_id, &public_ip) {
             Err(e) => eprintln!("Error Updating Zone: {}", e),
-            Ok(_) => println!("Zone Updated (ID:{})", zone_id),
+            Ok(r) => match r.as_str() {
+                "0" =>  println!("Zone Skipped (ID:{}): No Records to Update", zone_id),
+                _ => println!("Zone Updated (ID:{})", zone_id),
+            }
         } 
     }
 
