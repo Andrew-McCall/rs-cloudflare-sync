@@ -10,12 +10,13 @@ Features
 - Zone Filtering: Only updates zones given as domain names as arguments.
 - Record Filtering: Only updates 'A' records.
 - Secrets Management: Supports loading your Cloudflare API key from the JSON file.
+- File Logging: Optionally appends all output to a log file via the secrets file.
 - Error Handling: Provides clear error messages and exits with non-zero codes on failures.
 
 Prerequisites
 -------------
-- Rust & Cargo (install via rustup)
-- curl (must be installed)
+- Rust & Cargo (install via rustup) — build time only
+- curl — required at runtime, must be on PATH
 - Cloudflare API Key (with proper permissions)
 
 Installation
@@ -32,17 +33,18 @@ Installation
 Usage
 -----
 Run the tool as follows:  
-   `./cloudflare-dns-updater <API_KEY_OR_FILE> <DOMAIN_1> [DOMAIN_2 ...]`  
+   `./cloudflare-dns-updater <API_KEY | file:<PATH>> <DOMAIN_1> [DOMAIN_2 ...]`
 
-- API_KEY_OR_FILE: Either your Cloudflare API key or a JSON file path prefixed with "file:" (e.g., file:/path/to/secrets.json).
-- Domain Arguments: One or more domains to update.
+Arguments:
+- `API_KEY` — your Cloudflare Bearer token directly (no IP caching, always updates Cloudflare)
+- `file:<PATH>` — path to a JSON secrets file (e.g. `file:/path/to/secrets.json`)
+- `DOMAIN_1 ...` — one or more domain names to update
 
 Examples:
 - Using an API key directly:  
-   `./cloudflare-dns-updater YOUR_CLOUDFLARE_API_KEY example.com`  
-  (This does NOT cache the ip and therefore always updates cloudflare)
+   `./cloudflare-dns-updater YOUR_CLOUDFLARE_API_KEY example.com`
 - Using a secrets file:  
-   `./cloudflare-dns-updater file:/path/to/secrets.json example.com`   
+   `./cloudflare-dns-updater file:/path/to/secrets.json example.com`
 
 Secrets File Format
 -------------------
@@ -50,10 +52,15 @@ If using a file, your JSON should look like:
 ```json
 {
   "cloudflare_api_key": "YOUR_CLOUDFLARE_API_KEY",
-  "last_ip": null
+  "last_ip": null,
+  "log_path": null
 }
-```  
-The last_ip field is updated automatically after each run.
+```
+
+Fields:
+- `cloudflare_api_key` — (required) your Cloudflare Bearer token
+- `last_ip` — (optional) last known public IP; updated automatically after each run, skips Cloudflare update if unchanged
+- `log_path` — (optional) path to a file where all output is appended (e.g. `"/var/log/cloudflare-sync.log"`)
 
 If you pass "DEFAULT" (case-insensitive) as the first domain argument, the tool will create a default secrets file and then exit. For example:  
    `./cloudflare-dns-updater file:/path/to/secrets.json DEFAULT`  
