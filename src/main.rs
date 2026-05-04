@@ -210,7 +210,7 @@ fn main() {
             }
             Ok(s) => s,
         };
-        println!("Key: {}", &secrets.cloudflare_api_key[secrets.cloudflare_api_key.len() -4..]);
+        println!("Key (Ending): {}", &secrets.cloudflare_api_key[secrets.cloudflare_api_key.len() -4..]);
         println!("Last Ip: {}", &secrets.last_ip.as_ref().unwrap_or(&"N/A".to_owned()));
     }else{
         secrets = Secret::new(api_details);
